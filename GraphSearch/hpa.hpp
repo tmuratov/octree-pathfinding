@@ -172,7 +172,7 @@ bool octree_path_planner::Astar_graph_search()
 	}
 	else
 	{
-		S = std::make_shared<search_node>(m_start_id, m_start.x, m_start.y, m_start.z, 0,0,0);
+		S = std::make_shared<search_node>(m_start_id, m_start);
 		S->octree_ref = m_tree_nodes[m_start_id];
 		m_tree_nodes[m_start_id]->Astar_ref = S;
 		S->cluster_id = m_tree_nodes[m_start_id]->cluster_id;
@@ -191,7 +191,7 @@ bool octree_path_planner::Astar_graph_search()
 	}
 	else
 	{
-		G = std::make_shared<search_node>(m_goal_id, m_goal.x, m_goal.y, m_goal.z, 0,0,0);
+		G = std::make_shared<search_node>(m_goal_id, m_goal);
 		G->octree_ref = m_tree_nodes[m_goal_id];
 		m_tree_nodes[m_goal_id]->Astar_ref = G;
 		G->cluster_id = m_tree_nodes[m_goal_id]->cluster_id;
@@ -525,25 +525,25 @@ void octree_path_planner::set_Astar_graph(int cluster_depthlvl)
 		// define straight cluster size
 		int ccount = 12;
 
-		int Xsize = dim[0] / ccount;
-		int Ysize = dim[1] / ccount;
-		int Zsize = dim[2] / ccount;
+		int Xsize = dim.x / ccount;
+		int Ysize = dim.y / ccount;
+		int Zsize = dim.z / ccount;
 
 		// std::vector< std::vector<NodePtr> > clusters_data(pow(ccount+1, 3));
 		int id = 0;
-		for (int x = 0; x < dim[0]; x++)
-			for (int y = 0; y < dim[1]; y++)
-				for (int z = 0; z < dim[2]; z++)
-				{
-					point_3d temp_c(x, y, z);
-					if (!is_free(temp_c))
-						continue;
+		for (int x = 0; x < dim.x; x++)
+		for (int y = 0; y < dim.y; y++)
+		for (int z = 0; z < dim.z; z++)
+		{
+			point_3d temp_c(x, y, z);
+			// if (!is_free(temp_c))
+			// 	continue;
 
-					id = coord_to_id(temp_c);
-					int cid = x / Xsize + y / Ysize * ccount + z / Zsize * ccount * ccount;
-					m_tree_nodes[id]->cluster_id = cid;
-					// clusters_data[cid].push_back(m_tree_nodes[id]);
-				}
+			id = temp_c.x + dim.x * temp_c.y + dim.x*dim.y*temp_c.z;
+			int cid = x / Xsize + y / Ysize * ccount + z / Zsize * ccount * ccount;
+			m_tree_nodes[id]->cluster_id = cid;
+			// clusters_data[cid].push_back(m_tree_nodes[id]);
+		}
 		std::cout << "pass" << std::endl;
 		// for (const auto & cluster : clusters_data){
 

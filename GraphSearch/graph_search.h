@@ -6,31 +6,25 @@
 #ifndef GRAPH_SEARCH_H
 #define GRAPH_SEARCH_H
 
-#include <boost/heap/d_ary_heap.hpp> // boost::heap::d_ary_heap
-#include <memory>					 // std::shared_ptr
-#include <limits>					 // std::numeric_limits
-#include <vector>					 // std::vector
-#include <unordered_map>			 // std::unordered_map
+#include <boost/heap/d_ary_heap.hpp> 
+#include <memory>					 
+#include <limits>					 
+#include <vector>					 
+#include <unordered_map>			 
 #include <set>
 #include <map>
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
 
-enum e_dir_code{
-	L=0,
-	R=1,
-	B=0,
-	F=2,
-	D=0,
-	U=4
-};
+
+const short L=0, B=0, D=0;
+const short R=1, F=2, U=4;
 
 // indices of cluster parts sorted by position
 // i.e. right-back-up point_3d RBU = 5
 enum e_cluster_part
 {
-	NONE = -1,
 	LBD,	RBD,
 	LFD,	RFD,
 	LBU,	RBU,
@@ -49,10 +43,19 @@ enum e_state_desc
 struct point_3d
 {
 	int x, y, z = 0;
+
 	point_3d() {}
 	point_3d(int x_, int y_, int z_)
-		: x(x_), y(y_), z(x_)
+		: x(x_), y(y_), z(z_)
 	{	}
+	point_3d(const point_3d & _copy)
+		: x(_copy.x), y(_copy.y), z(_copy.z)
+	{	}
+
+	friend std::ostream& operator << (std::ostream& os, const point_3d & val) {
+		os << val.x << '-'<< val.y << '-' << val.z;
+		return os;
+	}
 };
 
 struct tree_node;
@@ -72,8 +75,8 @@ struct compare_states
 		
 		// if equal compare gvals
 		if ((f1 >= f2 - eps) && (f1 <= f2 + eps))
-			return a1->g < a2->g; 
-		return f1 > f2;
+			 return a1->g < a2->g; 
+		else return f1 > f2;
 	}
 };
 
@@ -87,26 +90,25 @@ using Astar_priority_queue = boost::heap::d_ary_heap<
 /// Node of the octree
 struct tree_node
 {
-	point_3d coord;
 	int id;
+	point_3d coord;
 	e_state_desc status = e_state_desc::UNSET;
-	e_cluster_part label = e_cluster_part::NONE;
 
 	// "length" of cube edge
-	int size;
-	// "volume" of cube
-	int capacity;
+	short int size;
+	// "volume" of cube, pow3(size)
+	inline const int capacity() const;
 	// amount of occupied map cells
+	// store as int to keep statistical value when obstacle data is cleared
 	int occupancy = 0;
-
-	short int depth;
-	int cluster_id = -1;
+	short int depth = 0;
+	short int cluster_id = -1;
 
 	search_node_ptr Astar_ref = nullptr;
 
 	tree_node_ptr parent = nullptr;
-	std::vector<tree_node_ptr> children;
-	std::vector<tree_node_ptr> neighbors;
+	std::array<tree_node_ptr, 8> children;
+	std::set<tree_node_ptr> neighbors;
 
 	// info about obstacles from parent node (or whole map for root)
 	// stored in array[8] to be further dispersed to children
@@ -115,22 +117,28 @@ struct tree_node
 	std::array<std::vector<point_3d>, 8> obstacles;
 
 	void connect_children();
-	int get_status() const;
-	bool access_neighboring(tree_node_ptr node);
+	bool is_neighbor_to(tree_node_ptr node) const;
 
-	tree_node(int _id, int _size, int _x, int _y, int _z, tree_node_ptr _parent = nullptr, e_cluster_part _label = e_cluster_part::NONE)
-	: coord(_x, _y, _z), id(_id), size(_size), parent(_parent), label(_label)
+	tree_node(
+		int _id, int _size, 
+		point_3d _coord,
+		tree_node_ptr _parent = nullptr
+	)
+	: coord(_coord), id(_id), size(_size), parent(_parent)
 	{
-		children.reserve(8);
+		for (int i = 0; i < 8; i++)
+		{
+			obstacles[i] = std::vector<point_3d>();
+			children [i] = nullptr;
+		}
 	}
 };
 
 /// Astar state of tree node in path search graph
 struct search_node
 {
-	point_3d coord;
 	int id;
-	int dx, dy, dz = 0;
+	point_3d coord;
 
 	/// reference to an octree node
 	tree_node_ptr octree_ref = nullptr;
@@ -154,20 +162,26 @@ struct search_node
 
 	search_node_ptr prev_in_path = nullptr;
 
-	search_node(int _id, int x, int y, int z, int _dx, int _dy, int _dz )
-	: coord(x, y, z), id(_id), dx(_dx), dy(_dy), dz(_dz)
+	search_node(int _id, point_3d _coord)
+	: id(_id), coord(_coord)
 	{}
 };
 
 class octree_path_planner
 {
 public:
-	octree_path_planner(const char *map_data, int x_dim, int y_dim, int z_dim, short int recurse_lvl = 1, double eps = 1, bool verbose = false);
+	octree_path_planner(
+		const char *map_data, 
+		int x_dim, int y_dim, int z_dim, 
+		short int recurse_lvl = 1, 
+		double eps = 1, 
+		bool verbose = false
+	);
 
 	void construct_octree();
 	tree_node_ptr make_root_node(int &maxdepth);
-	tree_node_ptr make_child_node(tree_node_ptr p, int _label, int _id);
-	tree_node_ptr make_corner_node(tree_node_ptr p, int _label, int _id, int corner_size);
+	tree_node_ptr make_child_node(tree_node_ptr par, e_cluster_part _label, int _id);
+	tree_node_ptr make_corner_node(tree_node_ptr par, e_cluster_part _label, int _id, int corner_size);
 
 	search_node_ptr convert_to_graph_node(tree_node_ptr t);
 
@@ -175,7 +189,11 @@ public:
 
 	/// this function conducts path planning on the map
 	/// max_expand: maximum number of expansion allowed, optional, default is -1, means no limitation
-	bool plan(int start_x, int start_y, int start_z, int goal_x, int goal_y, int goal_z, int max_expand = -1);
+	bool plan(
+		int start_x, int start_y, int start_z, 
+		int goal_x, int goal_y, int goal_z, 
+		int max_expand = -1
+	);
 
 	/// Get the optimal path for given start-goal
 	std::vector<search_node_ptr> get_path() const;
@@ -205,24 +223,18 @@ private:
 	/// Recover the optimal path
 	std::vector<search_node_ptr> recover_path(search_node_ptr node);
 
-	/// Get subscript
-	int coord_to_id(point_3d v) const;
-	/// Check if (x, y, z) is free
-	bool is_free(point_3d v) const;
-	/// Check if (x, y, z) is occupied
-	bool is_occupied(point_3d v) const;
 	/// Calculate heuristic
-	double get_heuristic_weight(point_3d v) const;
+	inline const double get_heuristic_weight(point_3d v) const;
 
 	// map size
-	std::array<int, 3> dim;
+	point_3d dim;
 	// int xDim_, yDim_, zDim_;
 
 	// =1 by def
 	double m_eps = 1;
 
 	bool m_verbose;
-
+	short m_with_corners = 0;
 	// destination point
 	point_3d m_start; int m_start_id;
 	point_3d m_goal; int m_goal_id;
@@ -232,6 +244,8 @@ private:
 	const char *m_map_data;
 
 	// octree data <-> search graph
+
+	tree_node_ptr m_root;
 	std::vector<tree_node_ptr> m_tree_nodes;
 	std::map<int, search_node_ptr> m_search_nodes;
 

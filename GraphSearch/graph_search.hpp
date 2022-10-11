@@ -6,24 +6,20 @@
 #include <chrono>
 #include <iostream>
 
-inline e_cluster_part encode_label(short xl, short yl, short zl)
-{
+inline e_cluster_part encode_label(short xl, short yl, short zl) {
     return e_cluster_part(xl + yl + zl);
 }
-
 point_3d decode_label(e_cluster_part label)
 {
-    int x = 0, y = 0, z = 0;
-    int temp = (int)label;
-
-    if (temp >= 4)
-    {
+    short x = 0, y = 0, z = 0;
+    short temp = (short)label;
+    
+    if (temp >= 4) {
         temp -= 4;
         z = U;
     }
 
-    if (temp >= 2)
-    {
+    if (temp >= 2) {
         temp -= 2;
         y = F;
     }
@@ -33,32 +29,32 @@ point_3d decode_label(e_cluster_part label)
     return point_3d(x, y, z);
 }
 
-inline double dist(tree_node_ptr C1, tree_node_ptr C2)
-{
-    return std::sqrt(std::pow(C2->coord.x - C1->coord.x, 2) +
-                     std::pow(C2->coord.y - C1->coord.y, 2) +
-                     std::pow(C2->coord.z - C1->coord.z, 2));
-}
-inline double dist(search_node_ptr C1, search_node_ptr C2)
-{
-    return std::sqrt(std::pow(C2->coord.x - C1->coord.x, 2) +
-                     std::pow(C2->coord.y - C1->coord.y, 2) +
-                     std::pow(C2->coord.z - C1->coord.z, 2));
-}
-inline double dist(point_3d C1, point_3d C2)
-{
+inline const double dist(point_3d C1, point_3d C2) {
     return std::sqrt(std::pow(C2.x - C1.x, 2) +
                      std::pow(C2.y - C1.y, 2) +
                      std::pow(C2.z - C1.z, 2));
 }
+inline const double dist(tree_node_ptr C1, tree_node_ptr C2) {
+    return dist(C2->coord, C1->coord);
+}
+inline const double dist(search_node_ptr C1, search_node_ptr C2) {
+    return dist(C2->coord, C1->coord);
+}
+inline const double octree_path_planner::get_heuristic_weight(point_3d v) const
+{
+    return m_eps * dist(v, m_goal);
+}
+
+inline const int tree_node::capacity() const { return std::pow(size, 3); }
 
 octree_path_planner::octree_path_planner(
     const char *char_map,
     int xN, int yN, int zN,
     short int recurse_lvl,
     double eps,
-    bool verbose) 
-    : m_map_data(char_map), dim({xN, yN, zN}), m_eps(eps), m_verbose(verbose)
+    bool verbose
+) 
+: m_map_data(char_map), dim(xN, yN, zN), m_eps(eps), m_verbose(verbose)
 {
     auto t1 = std::chrono::steady_clock::now();
     construct_octree();
@@ -95,37 +91,13 @@ octree_path_planner::octree_path_planner(
         }
         fout.close();
     }
-    // exit(0);
 }
 
-inline int octree_path_planner::coord_to_id(point_3d v) const
-{
-    return v.x + v.y * dim[0] + v.z * dim[0] * dim[1];
-}
-
-inline bool octree_path_planner::is_free(point_3d v) const
-{
-    return v.x >= 0 && v.x < dim[0] 
-        && v.y >= 0 && v.y < dim[1] 
-        && v.z >= 0 && v.z < dim[2] 
-        && m_map_data[coord_to_id(v)] == 0;
-}
-
-inline bool octree_path_planner::is_occupied(point_3d v) const
-{
-    return v.x >= 0 && v.x < dim[0] 
-        && v.y >= 0 && v.y < dim[1] 
-        && v.z >= 0 && v.z < dim[2] 
-        && m_map_data[coord_to_id(v)] > 0;
-}
-
-inline double octree_path_planner::get_heuristic_weight(point_3d v) const
-{
-    return m_eps * dist(v, m_goal);
-}
-
-bool octree_path_planner::plan(int xs, int ys, int zs, int xg, int yg, int zg, int max_expand)
-{
+bool octree_path_planner::plan(
+    int xs, int ys, int zs,
+    int xg, int yg, int zg,
+    int max_expand
+){
     m_raw_path.clear();
     m_seen_list.assign(m_tree_nodes.size(), false);
     m_search_front.clear();

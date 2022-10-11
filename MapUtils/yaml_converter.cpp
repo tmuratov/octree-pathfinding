@@ -1,3 +1,10 @@
+/**
+ * this program converts .3dmap file to YAML format so that they can be used with jps3d planner
+ * 
+ * .3dmap files are available here: https://movingai.com/benchmarks/warframe/index.html 
+ * jps3d planner available here:    https://github.com/KumarRobotics/jps3d
+*/
+
 #include <iostream>
 #include <fstream>
 #include <yaml-cpp/yaml.h>

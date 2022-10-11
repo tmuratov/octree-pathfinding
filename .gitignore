@@ -1,2 +1,4 @@
 .vscode/**
 *.exe
+*.3dmap
+test.cxx

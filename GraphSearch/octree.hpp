@@ -1,5 +1,10 @@
 #include "graph_search.hpp"
 
+void connect(tree_node_ptr A, tree_node_ptr B){
+	if (!A || !B) return;
+	A->neighbors.insert(B);
+	B->neighbors.insert(A);
+}
 void tree_node::connect_children()
 {
 	if (children.empty())
@@ -10,66 +15,62 @@ void tree_node::connect_children()
 	else
 	{
 		// templated neighbors
-
 		for (int i = 0; i < 8; i++)
 		{
+			if (!children[i]) continue;
 			children[i]->neighbors.clear();
-			children[i]->neighbors.push_back(children[i]->parent);
+			connect(children[i], children[i]->parent);
 		}
+			// no diagonal connections, make 6-direction grid
+			connect(children[LBD], children[RBD]);
+			connect(children[LBD], children[LFD]);
+			connect(children[LBD], children[LBU]);
 
-		this->children[LBD]->neighbors.push_back(children[RBD]);
-		this->children[LBD]->neighbors.push_back(children[LFD]);
-		this->children[LBD]->neighbors.push_back(children[LBU]);
-
-		this->children[RBD]->neighbors.push_back(children[LBD]);
-		this->children[RBD]->neighbors.push_back(children[RFD]);
-		this->children[RBD]->neighbors.push_back(children[RBU]);
-
-		this->children[LFD]->neighbors.push_back(children[RFD]);
-		this->children[LFD]->neighbors.push_back(children[LBD]);
-		this->children[LFD]->neighbors.push_back(children[LFU]);
-
-		this->children[RFD]->neighbors.push_back(children[LFD]);
-		this->children[RFD]->neighbors.push_back(children[RBD]);
-		this->children[RFD]->neighbors.push_back(children[RFU]);
-
-		this->children[LBU]->neighbors.push_back(children[RBU]);
-		this->children[LBU]->neighbors.push_back(children[LFU]);
-		this->children[LBU]->neighbors.push_back(children[LBD]);
-
-		this->children[RBU]->neighbors.push_back(children[LBU]);
-		this->children[RBU]->neighbors.push_back(children[RFU]);
-		this->children[RBU]->neighbors.push_back(children[RBD]);
-
-		this->children[LFU]->neighbors.push_back(children[RFU]);
-		this->children[LFU]->neighbors.push_back(children[LBU]);
-		this->children[LFU]->neighbors.push_back(children[LFD]);
-
-		this->children[RFU]->neighbors.push_back(children[LFU]);
-		this->children[RFU]->neighbors.push_back(children[RBU]);
-		this->children[RFU]->neighbors.push_back(children[RFD]);
+			connect(children[RBD], children[LBD]);
+			connect(children[RBD], children[RFD]);
+			connect(children[RBD], children[RBU]);
+			
+			connect(children[LFD], children[RFD]);
+			connect(children[LFD], children[LBD]);
+			connect(children[LFD], children[LFU]);
+			
+			connect(children[RFD], children[LFD]);
+			connect(children[RFD], children[RBD]);
+			connect(children[RFD], children[RFU]);
+			
+			connect(children[LBU], children[RBU]);
+			connect(children[LBU], children[LFU]);
+			connect(children[LBU], children[LBD]);
+			
+			connect(children[RBU], children[RFU]);
+			connect(children[RBU], children[LBU]);
+			connect(children[RBU], children[LFD]);
+			
+			connect(children[LFU], children[RFU]);
+			connect(children[LFU], children[LBU]);
+			connect(children[LFU], children[LFD]);
+			
+			connect(children[RFU], children[LFU]);
+			connect(children[RFU], children[RBU]);
+			connect(children[RFU], children[RFD]);
 	}
 }
-
-int tree_node::get_status() const
-{
-	return status;
-}
-
 void octree_path_planner::external_search(tree_node_ptr node)
 {
+	if (node == nullptr) return;
+
 	for (auto it = node->parent->neighbors.begin(); it != node->parent->neighbors.end(); it++)
 	{
-		bool are_neighbors = node->access_neighboring(*it);
+		if ((*it) == nullptr) continue;
+		bool are_neighbors = node->is_neighbor_to(*it);
 		if (are_neighbors)
 		{
-			node->neighbors.push_back(*it);
-			(*it)->neighbors.push_back(node);
+			connect(*it, node);
 		}
 	}
 }
 
-bool tree_node::access_neighboring(tree_node_ptr n)
+bool tree_node::is_neighbor_to(tree_node_ptr n) const
 {
 	int ox = -5, oy = -5, oz = -5; // overlap result for each axis
 
@@ -101,12 +102,15 @@ void octree_path_planner::set_node_status(tree_node_ptr node)
 {
 	if (node->occupancy == 0)
 	{
-		if (node->coord.x >= dim[0] || node->coord.y >= dim[1] || node->coord.z >= dim[3])
+		if (node->coord.x >= dim.x && 
+			node->coord.y >= dim.y && 
+			node->coord.z >= dim.z
+		)
 			node->status = e_state_desc::UNKNOWN; // node out of map range --- unknown
 		else
 			node->status = e_state_desc::WHITE; // node is free to move through
 	}
-	else if (node->occupancy == node->capacity)
+	else if (node->occupancy == node->capacity())
 		node->status = e_state_desc::BLACK; // node is completely blocked, no need to divide further
 	else
 		node->status = e_state_desc::GRAY; // node contains obstacles, need to be further divided,
@@ -116,204 +120,222 @@ tree_node_ptr octree_path_planner::make_root_node(int &maxdepth)
 {
 	// define tree size: get closest ceiled pow2 to max dimension of raw map
 	int max_dim = 0; 
-	for (const int & dim_i : dim)
+	for (const int & dim_i : {dim.x, dim.y, dim.z})
 		if (dim_i > max_dim) 
 			max_dim = dim_i;
  	
-	int treeside = 2;
+	int treeside = 2; 	
 	maxdepth = 1;
-	while (treeside < max_dim)
-	{
+	while (treeside < max_dim)	{
 		treeside *= 2;
 		maxdepth++;
 	}
 
-	tree_node_ptr root = std::make_shared<tree_node>(0, treeside, 0, 0, 0, nullptr, NONE);
-	root->capacity = std::pow(treeside, 3); // size*size*size;
-	root->status = e_state_desc::UNSET;
-	root->depth = 0;
-	root->occupancy = 0;
+	// ID: 0; node pos: (0,0,0) === LeftBackDown corner
+	tree_node_ptr root = std::make_shared<tree_node>(0, treeside, point_3d(0,0,0), nullptr);
 
-	int xl = L, yl = B, zl = D; //(0,0,0) by def
-	for (int x = 0; x < dim[0]; x++)
-		for (int y = 0; y < dim[1]; y++)
-			for (int z = 0; z < dim[2]; z++)
-			{
-				point_3d coord(x, y, z);
-				if (is_occupied(coord))
-				{
-					xl = x >= treeside / 2 ? R : L;
-					yl = y >= treeside / 2 ? F : B;
-					zl = z >= treeside / 2 ? U : D;
-					root->occupancy++;
-					root->obstacles[encode_label(xl, yl, zl)].push_back(coord);
-				}
-			}
+	for (int x = 0; x < dim.x; x++)
+	for (int y = 0; y < dim.y; y++)
+	for (int z = 0; z < dim.z; z++)
+	{
+		int ind = x + y*dim.x + z*dim.x*dim.y;
+		if (m_map_data[ind] > 0)
+		{
+			short xl = L, yl = B, zl = D;
+			// side is pow2, so int
+			xl = x >= treeside / 2 ? R : L;
+			yl = y >= treeside / 2 ? F : B;
+			zl = z >= treeside / 2 ? U : D;
+			root->occupancy++;
+			root->obstacles[encode_label(xl,yl,zl)].push_back(point_3d(x, y, z));
+		}
+	}
+
+	for (auto &sector : root->obstacles)
+		sector.shrink_to_fit();
+
+	delete [] m_map_data;
+	m_map_data = nullptr;
 
 	set_node_status(root);
 
+	if (m_verbose)
+	{
+		std::cout << "\n------ root node ------" << std::endl;
+		std::cout << "Max dimension  : " << max_dim  << std::endl;
+		std::cout << "Root node size : " << treeside << std::endl;
+		std::cout << "Tree excess n  : " << root->capacity() - dim.x*dim.y*dim.z << std::endl;
+		std::cout << "Map occupancy  : " << root->occupancy << std::endl;
+		for (int i = 0; i < root->obstacles.size(); i++)
+			std::cout << "Sector " << i <<" size  : " << root->obstacles[i].size() << std::endl;
+		std::cout << "Max depth level: " << maxdepth << std::endl;
+		std::cout << "------ root node ------\n" << std::endl;
+	}
 	return root;
 }
 
-tree_node_ptr octree_path_planner::make_child_node(tree_node_ptr p, int _label, int _id)
+tree_node_ptr octree_path_planner::make_child_node(tree_node_ptr par, e_cluster_part _label, int _id)
 {
-	int _size = p->size / 2;
-	e_cluster_part e_label = (e_cluster_part)_label;
-	point_3d tmp_label = decode_label(e_label);
-	point_3d C(p->coord.x, p->coord.y, p->coord.z);
+	// size is pow2, so int
+	int _size = par->size / 2;
 
-	if (tmp_label.x == R)
-		C.x += _size;
-	if (tmp_label.y == F)
-		C.y += _size;
-	if (tmp_label.z == U)
-		C.z += _size;
+	point_3d par_coord(par->coord);
+	point_3d tmp_label = decode_label(_label);
 
-	tree_node_ptr child = std::make_shared<tree_node>(_id, _size, C.x, C.y, C.z, p, e_label);
+	if (tmp_label.x == R) par_coord.x += _size;
+	if (tmp_label.y == F) par_coord.y += _size;
+	if (tmp_label.z == U) par_coord.z += _size;
 
-	child->capacity = _size * _size * _size;
-	child->occupancy = p->obstacles[_label].size();
-	child->depth = p->depth + 1;
+	tree_node_ptr child = std::make_shared<tree_node>(_id, _size, par_coord, par);
 
+	child->occupancy = par->obstacles[_label].size();
+	child->depth = par->depth + 1;
 	child->status = e_state_desc::UNSET;
+
 
 	if (child->occupancy > 0)
 	{
-		int xl, yl, zl;
+		// divide this child cube in 8 to filter obstacles
+		// side is pow2, so int
+		int Cx = par_coord.x + _size/2;
+		int Cy = par_coord.y + _size/2;
+		int Cz = par_coord.z + _size/2;
 
-		for (auto it = p->obstacles[_label].begin(); it != p->obstacles[_label].end();)
+		// filter parent obstacles to child's sectors
+		for (auto it = par->obstacles[_label].begin(); it != par->obstacles[_label].end(); /*++ on erase op*/)
 		{
+			point_3d obs(*it);
+			short xl=L, yl=B, zl=D;
 
-			xl = (*it).x >= C.x + _size / 2 ? R : L;
-			yl = (*it).y >= C.y + _size / 2 ? F : B;
-			zl = (*it).z >= C.z + _size / 2 ? U : D;
-			child->obstacles[xl + yl + zl].push_back(*it);
-			p->obstacles[_label].erase(it);
+			xl = obs.x >= Cx ? R : L;
+			yl = obs.y >= Cy ? F : B;
+			zl = obs.z >= Cz ? U : D;
+			//child->occupancy++;
+			child->obstacles[encode_label(xl,yl,zl)].push_back(obs);
+			par->obstacles[_label].erase(it);
+		}
+		// cleanup and shrink
+		{
+			par->obstacles[_label].clear();
+			par->obstacles[_label].shrink_to_fit();
+			for (auto &sector : child->obstacles)
+				sector.shrink_to_fit();
 		}
 	}
+
 	set_node_status(child);
-	
-	child->neighbors.reserve(30);
+	if (child->status == UNKNOWN)
+	{
+		// do not store nodes out of bounds!
+		child.reset();
+		return nullptr;
+	}
+
 	return child;
-}
-
-tree_node_ptr octree_path_planner::make_corner_node(tree_node_ptr p, int _label, int _id, int corner_size)
-{
-	int _size = corner_size; // p->size/pow(2, maxdepth - p->depth);
-	e_cluster_part e_label = (e_cluster_part)_label;
-	point_3d tmp = decode_label(e_label);
-	point_3d C(p->coord.x, p->coord.y, p->coord.z);
-	if (tmp.x == R)
-		C.x += _size;
-	else
-		C.x += p->size - _size;
-	if (tmp.y == F)
-		C.y += _size;
-	else
-		C.y += p->size - _size;
-	if (tmp.z == U)
-		C.z += _size;
-	else
-		C.z += p->size - _size;
-
-	tree_node_ptr corner = std::make_shared<tree_node>(_id, _size, C.x, C.y, C.z, p, e_label);
-
-	// corner->capacity = _size*_size*_size;
-	// corner->occupancy = p->obstacles[_label].size();
-	corner->depth = p->depth + 4;
-
-	corner->status = WHITE;
-	// if (corner->GetStatus() == BLACK)
-	// std::cout << "corner info: id(" << _id << "); parent(" << p->id << "); depthlvl(" << corner.depth << "); status(" << corner.status << "); label(" << _label << "); capacity(" << corner.capacity << "); occupancy(" << corner.occupancy <<"); neighbors - " << corner.neighbors.size() << std::endl;
-
-	corner->neighbors.reserve(15);
-
-	return corner;
 }
 
 search_node_ptr octree_path_planner::convert_to_graph_node(tree_node_ptr t)
 {
-	search_node_ptr s = std::make_shared<search_node>(t->id,
-										t->coord.x + t->size / 2,
-										t->coord.y + t->size / 2,
-										t->coord.z + t->size / 2,
-										0,0,0
-									);
-	s->dx = s->dy = s->dz = 0;
+	if (t->status != WHITE) {
+		return nullptr;
+	}
+
+	// preserve id; move search node coordinate to the center of tree node cube
+	search_node_ptr s = std::make_shared<search_node>(
+		t->id,
+		point_3d(
+			t->coord.x + t->size / 2,
+			t->coord.y + t->size / 2,
+			t->coord.z + t->size / 2 
+		)
+	);
 
 	for (const auto it : t->neighbors)
-		if (it->get_status() == WHITE)
+		if (it->status == WHITE)
 			s->neighbor_ids.insert(it->id);
+
 	t->Astar_ref = s;
 	return s;
 }
 
 void octree_path_planner::construct_octree()
 {
-	std::cout << "commencing octree construction" << std::endl;
-	// reserve some space in the vector (statistically, octree usually holds ~50 times less nodes that unigrid)
-	m_tree_nodes.clear();
-	m_tree_nodes.reserve(dim[0] * dim[1] * dim[2] / 50);
+	std::cout << "Commencing octree construction..." << std::endl;
 	
 	int maxdepth;
-	auto root = make_root_node(maxdepth);
-	
-	m_tree_nodes.push_back(root);
-	std::cout << "root info: id(" << root->id << "); maxdepth(" << maxdepth 
-			  << "); status(" << root->status << "); size(" << root->size << "); capacity(" 
-			  << root->capacity << "); occupancy(" << root->occupancy << ")" 
-			  << std::endl;
+	m_root = make_root_node(maxdepth);
 
+	int outsiders = 0, blacks = 0, whites = 0, intermediate = 0;
 	// global tree node id
 	int gid = 1;
-	for (int it = 0; it < m_tree_nodes.size(); it++)
+	std::vector<tree_node_ptr> queue = {m_root};
+	while (!queue.empty())
 	{
-		if (m_tree_nodes[it]->status == GRAY)
+		tree_node_ptr it = queue.back(); queue.pop_back();
+		if (it == nullptr) continue;
+
+		if (it->status == GRAY)
 		{
 			// create 8 children
 			for (int i = 0; i < 8; i++)
 			{
-				m_tree_nodes.push_back(make_child_node(m_tree_nodes[it], i, gid));
-				m_tree_nodes[it]->children.push_back(m_tree_nodes[gid]);
-				// m_tree_nodes[it].neighbors.push_back(&m_tree_nodes[id]);
+				tree_node_ptr it_child = make_child_node(it, (e_cluster_part) i, gid);
+				// for now, register nodes out of bounds as nullptrs
+				it->children[i] = it_child;
+
+				if (it_child == nullptr) { outsiders++; } 
+				
+				queue.push_back(it_child);
 				gid++;
 			}
 
 			// internal search
-			m_tree_nodes[it]->connect_children();
+			it->connect_children();
 
 			// external search
-			for (int i = 0; i < 8; i++)
-			{
-				external_search(m_tree_nodes[it]->children[i]);
-			}
+			for (int i = 0; i < 8; i++)	
+				external_search(it->children[i]);
+			
+			intermediate++;
 		}
-
-		// append octree with corner nodes 
-		// else if (m_tree_nodes[it]->status == WHITE && m_tree_nodes[it]->depth < maxdepth - 3)
+		else if (it->status == WHITE)
+		{
+			whites++;
+		} 
+		else if (it->status == BLACK)
+		{
+			blacks++;
+			// free black nodes
+			it.reset();
+			it = nullptr;
+			continue;
+		}		
+		// else if (m_with_corners > 0 && it->status == WHITE && it->depth < maxdepth - 3)
 		// {
 		// 	for (int i = 0; i < 8; i++)
 		// 	{
-		// 		m_tree_nodes.push_back(make_corner_node(m_tree_nodes[it], i, gid, 2));
-		// 		m_tree_nodes[it]->children.push_back(m_tree_nodes[id]);
-		// 		id++;
+		// 		m_tree_nodes.push_back(make_corner_node(it, (e_cluster_part) i, gid, 2));
+		// 		it->children[i] = (m_tree_nodes[gid]);
+		// 		gid++;
 		// 	}
-		// 	m_tree_nodes[it]->connect_children();
+		// 	it->connect_children();
 		// 	// external search
 		// 	for (int i = 0; i < 8; i++)
-		// 		external_search(m_tree_nodes[it]->children[i]);
-		// 		//m_tree_nodes[it]->children[i]->external_search(m_tree_nodes);
+		// 		external_search(it->children[i]);
 		// }
 	}
-	// int whites = 0;
-	// m_search_nodes.clear();
-	// for (auto it = m_tree_nodes.begin(); it != m_tree_nodes.end(); it++)
-	// {
-	// 		if ((*it)->get_status() == WHITE)
-	// 			whites++;
-	// 		m_search_nodes[(*it)->id] = convert_to_graph_node(*it);
-	// }
-	// std::cout << "reduced to " << whites << " white m_tree_nodes" << std::endl;
+
+	if (m_verbose)
+	{
+		std::cout << "\n------ octree parameters ------" << std::endl;
+		std::cout << "Total nodes : " << blacks + whites + intermediate + outsiders << std::endl;
+		std::cout << "Intermed.   : " << intermediate << std::endl;
+		std::cout << "Dropped     : " << outsiders << std::endl;
+		std::cout << "Black nodes : " << blacks << std::endl;
+		std::cout << "Leaf nodes  : " << whites + blacks << std::endl;
+		std::cout << "Nav cells   : " << whites << std::endl;
+		std::cout << "------ octree parameters ------\n" << std::endl;
+	}
 }
 
 /// define start and goal node IDs by running in-deapth search
@@ -323,26 +345,26 @@ void octree_path_planner::set_targets()
 	m_goal_id = 0;
 
 	tree_node_ptr s = m_tree_nodes[0];
-	while (s->get_status() != WHITE)
+	while (s->status != WHITE)
 	{
-		int xl, yl, zl;
+		short xl, yl, zl;
 		xl = m_start.x >= s->coord.x + s->size / 2 ? R : L;
 		yl = m_start.y >= s->coord.y + s->size / 2 ? F : B;
 		zl = m_start.z >= s->coord.z + s->size / 2 ? U : D;
-		s = s->children[xl + yl + zl];
+		s = s->children[encode_label(xl, yl, zl)];
 		m_start_id = s->id;
 	}
 
 	m_search_nodes[m_start_id]->coord = m_start;
 
 	tree_node_ptr g = m_tree_nodes[0];
-	while (g->get_status() != WHITE)
+	while (g->status != WHITE)
 	{
-		int xl, yl, zl;
+		short xl, yl, zl;
 		xl = m_goal.x >= g->coord.x + g->size / 2 ? R : L;
 		yl = m_goal.y >= g->coord.y + g->size / 2 ? F : B;
 		zl = m_goal.z >= g->coord.z + g->size / 2 ? U : D;
-		g = g->children[xl + yl + zl];
+		g = g->children[encode_label(xl, yl, zl)];
 		m_goal_id = g->id;
 	}
 
