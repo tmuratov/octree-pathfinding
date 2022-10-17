@@ -1,0 +1,31 @@
+what's visualized here:
+
+white cubes = obstacles
+
+blue cubes - a subgoals search (sub)graph used for clustered pathfinding (paths from blue points to any other octree leaf can be calculated)
+basically subgoal graph is the sub-octree - the same octree but with dropped N last depth levels (leaf nodes and their parents) 
+
+red cubes + blue cubes = all octree leaf nodes == full search graph
+
+easy to see, amount of red nodes is greater than amount of blue, this basically gives the optimization effect
+
+green cubes are all the nodes seen by the algorithm (also can be referred to as search frontier, priority queue in A* algorithm)
+the less is amount of green cubes <=> the faster is the search
+
+the resulting path:
+- blue cubes are subgoals, red cubes connected with red lines is the actual path
+- final path is produced by refinement - connecting subgoals with red cubes aka leaf nodes
+- the refinement is done at octree construction stage using Dijkstra algorithm or smth similar - so that all the shortest paths from *leaf* subgoals to their red neighbors are stored in memory
+
+
+on gifs, the paths produced by Astar and HPA are slightly different but this should be ok at this point of development
+probably there's some minor issue with construction of subgoal graph (incorrect neighbor detection)
+
+path length in conventional units (white cube edge length is 1)
+
+HPA path distance : 371.1236 
+octree path distance : 368.2256
+
+also see some statistical values and charts in sapmples.xlsx
+the values are search expansion, path lengh, result error and search time
+these results are obtained by running a series of patfinding tasks (construct graph once and then use it to connect 10k start-goal pairs)
