@@ -70,7 +70,7 @@ void octree_path_planner::external_search(tree_node_ptr node)
 	}
 }
 
-bool tree_node::is_neighbor_to(tree_node_ptr n) const
+const bool tree_node::is_neighbor_to(const tree_node_ptr& n) const
 {
 	int ox = -5, oy = -5, oz = -5; // overlap result for each axis
 
@@ -132,7 +132,7 @@ tree_node_ptr octree_path_planner::make_root_node(int &maxdepth)
 	}
 
 	// ID: 0; node pos: (0,0,0) === LeftBackDown corner
-	tree_node_ptr root = std::make_shared<tree_node>(0, treeside, point_3d(0,0,0), nullptr);
+	tree_node_ptr root = std::make_shared<search_node>(0, point_3d(0,0,0), treeside, nullptr);
 
 	for (int x = 0; x < dim.x; x++)
 	for (int y = 0; y < dim.y; y++)
@@ -186,7 +186,7 @@ tree_node_ptr octree_path_planner::make_child_node(tree_node_ptr par, e_cluster_
 	if (tmp_label.y == F) par_coord.y += _size;
 	if (tmp_label.z == U) par_coord.z += _size;
 
-	tree_node_ptr child = std::make_shared<tree_node>(_id, _size, par_coord, par);
+	tree_node_ptr child = std::make_shared<search_node>(_id, par_coord, _size, par);
 
 	child->occupancy = par->obstacles[_label].size();
 	child->depth = par->depth + 1;
@@ -234,28 +234,20 @@ tree_node_ptr octree_path_planner::make_child_node(tree_node_ptr par, e_cluster_
 	return child;
 }
 
-search_node_ptr octree_path_planner::convert_to_graph_node(tree_node_ptr t)
+search_node_ptr octree_path_planner::convert_to_search_node(tree_node_ptr t)
 {
-	if (t->status != WHITE) {
+	// only parse nav area 
+	if (t->status != WHITE)
+	{
+		// release resources just in case it hasn't been done before
+		t.reset();
+		t = nullptr;
 		return nullptr;
 	}
 
-	// preserve id; move search node coordinate to the center of tree node cube
-	search_node_ptr s = std::make_shared<search_node>(
-		t->id,
-		point_3d(
-			t->coord.x + t->size / 2,
-			t->coord.y + t->size / 2,
-			t->coord.z + t->size / 2 
-		)
-	);
-
-	for (const auto it : t->neighbors)
-		if (it->status == WHITE)
-			s->neighbor_ids.insert(it->id);
-
-	t->Astar_ref = s;
-	return s;
+	// static cast because '*t' was initialized as search_node, and its derived class is not polymorphic
+	search_node_ptr sn = std::static_pointer_cast<search_node>(t);
+	return nullptr;
 }
 
 void octree_path_planner::construct_octree()
@@ -305,24 +297,11 @@ void octree_path_planner::construct_octree()
 		else if (it->status == BLACK)
 		{
 			blacks++;
-			// free black nodes
+			// drop black nodes
 			it.reset();
 			it = nullptr;
 			continue;
-		}		
-		// else if (m_with_corners > 0 && it->status == WHITE && it->depth < maxdepth - 3)
-		// {
-		// 	for (int i = 0; i < 8; i++)
-		// 	{
-		// 		m_tree_nodes.push_back(make_corner_node(it, (e_cluster_part) i, gid, 2));
-		// 		it->children[i] = (m_tree_nodes[gid]);
-		// 		gid++;
-		// 	}
-		// 	it->connect_children();
-		// 	// external search
-		// 	for (int i = 0; i < 8; i++)
-		// 		external_search(it->children[i]);
-		// }
+		}
 	}
 
 	if (m_verbose)

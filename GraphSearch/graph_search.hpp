@@ -6,7 +6,7 @@
 #include <chrono>
 #include <iostream>
 
-inline e_cluster_part encode_label(short xl, short yl, short zl) {
+inline const e_cluster_part encode_label(short xl, short yl, short zl) {
     return e_cluster_part(xl + yl + zl);
 }
 point_3d decode_label(e_cluster_part label)
@@ -60,37 +60,43 @@ octree_path_planner::octree_path_planner(
     construct_octree();
     std::cout << "tree construction time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t1).count() << "ms" << std::endl;
 
-    std::cout << "constructing Search graph, recurse level " << recurse_lvl << std::endl;
-    set_Astar_graph(recurse_lvl);
-    std::cout << "octree + abstract graph construction time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t1).count() << "ms" << std::endl;
+    // std::cout << "constructing Search graph, clustering depth level " << recurse_lvl << std::endl;
+    // set_Astar_graph(recurse_lvl);
+    // std::cout << "octree + abstract graph construction time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t1).count() << "ms" << std::endl;
 
-    if (m_verbose)
-    {
-        std::ofstream fout("graph-info.txt");
-        std::vector<tree_node_ptr> queue;
-        queue.push_back(m_tree_nodes[0]);
+    // if (m_verbose)
+    // {
+    //     std::ofstream fout("graph-info.txt");
+    //     std::vector<tree_node_ptr> queue;
+    //     queue.push_back(m_tree_nodes[0]);
 
-        for (int i = 0; i < queue.size(); i++)
-        {
-            if (queue[i]->status == GRAY)
-                queue.insert(queue.end(), queue[i]->children.begin(), queue[i]->children.end());
+    //     for (int i = 0; i < queue.size(); i++)
+    //     {
+    //         if (queue[i]->status == GRAY)
+    //             queue.insert(queue.end(), queue[i]->children.begin(), queue[i]->children.end());
 
-            else if (queue[i]->status == BLACK)
-                fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << queue[i]->status << " " << std::endl;
+    //         // else if (queue[i]->status == BLACK)
+    //         //     fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << queue[i]->status << " " << std::endl;
 
-            else if (queue[i]->status == WHITE)
-            {
-                if (!queue[i]->children.empty())
-                    queue.insert(queue.end(), queue[i]->children.begin(), queue[i]->children.end());
+    //         else if (queue[i]->status == WHITE)
+    //         {
+    //             if (!queue[i]->children.empty())
+    //                 queue.insert(queue.end(), queue[i]->children.begin(), queue[i]->children.end());
 
-                if (queue[i]->Astar_ref)
-                    fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << 2 << " " << std::endl;
-                else
-                    fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << queue[i]->status << " " << std::endl;
-            }
-        }
-        fout.close();
-    }
+    //             // if (queue[i]->Astar_ref)
+    //             //     fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << 2 << " " << std::endl;
+    //             // else
+    //             //     fout << " " << queue[i]->Astar_ref->coord.x << " " << queue[i]->Astar_ref->coord.y << " " << queue[i]->Astar_ref->coord.z << " " << queue[i]->size << " " << queue[i]->status << " " << std::endl;
+    //         }
+    //     }
+    //     fout.close();
+    // }
+    if (m_root == nullptr)
+        std::cout << "The root node has been removed, memory freed" << std::endl;
+    else 
+        std::cout << "The root node is , memory freed" << std::endl;
+    std::system("pause");
+    std::exit(0);
 }
 
 bool octree_path_planner::plan(
@@ -106,7 +112,7 @@ bool octree_path_planner::plan(
     m_goal = point_3d(xg, yg, zg);
     set_targets();
 
-    search_node_ptr current_node = m_tree_nodes[m_start_id]->Astar_ref;
+    search_node_ptr current_node = std::make_shared<search_node>(m_start_id, m_start);
 
     current_node->g = 0;
     current_node->h = 0;
@@ -239,24 +245,24 @@ std::vector<search_node_ptr> octree_path_planner::recover_path(search_node_ptr n
 // todo rework
 void octree_path_planner::get_successors(const search_node_ptr &curr, std::map<int, double> &succ_costs)
 {
-    for (const auto &new_id : curr->neighbor_ids)
-    {
-        if (m_tree_nodes[m_start_id]->cluster_id != m_tree_nodes[new_id]->cluster_id)
-            // int new_id = coordToId(new_x, new_y, new_z);
-            if (!m_seen_list[new_id])
-            {
-                m_search_nodes[new_id]->g = std::numeric_limits<double>::infinity();
-                m_search_nodes[new_id]->opened = false;
-                m_search_nodes[new_id]->closed = false;
-                m_seen_list[new_id] = true;
-                m_search_nodes[new_id]->h = get_heuristic_weight(m_search_nodes[new_id]->coord);
-            }
-        std::array<float, 3> d;
-        d[0] = m_search_nodes[new_id]->coord.x - curr->coord.x;
-        d[1] = m_search_nodes[new_id]->coord.y - curr->coord.y;
-        d[2] = m_search_nodes[new_id]->coord.z - curr->coord.z;
-        succ_costs[new_id] = (std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
-    }
+    // for (const auto &new_id : curr->neighbor_ids)
+    // {
+    //     if (m_tree_nodes[m_start_id]->cluster_id != m_tree_nodes[new_id]->cluster_id)
+    //         // int new_id = coordToId(new_x, new_y, new_z);
+    //         if (!m_seen_list[new_id])
+    //         {
+    //             m_search_nodes[new_id]->g = std::numeric_limits<double>::infinity();
+    //             m_search_nodes[new_id]->opened = false;
+    //             m_search_nodes[new_id]->closed = false;
+    //             m_seen_list[new_id] = true;
+    //             m_search_nodes[new_id]->h = get_heuristic_weight(m_search_nodes[new_id]->coord);
+    //         }
+    //     std::array<float, 3> d;
+    //     d[0] = m_search_nodes[new_id]->coord.x - curr->coord.x;
+    //     d[1] = m_search_nodes[new_id]->coord.y - curr->coord.y;
+    //     d[2] = m_search_nodes[new_id]->coord.z - curr->coord.z;
+    //     succ_costs[new_id] = (std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+    // }
 }
 
 std::vector<search_node_ptr> octree_path_planner::get_path() const

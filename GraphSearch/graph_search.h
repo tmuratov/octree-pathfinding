@@ -88,8 +88,9 @@ using Astar_priority_queue = boost::heap::d_ary_heap<
 >;
 
 /// Node of the octree
-struct tree_node
+class tree_node
 {
+public:
 	int id;
 	point_3d coord;
 	e_state_desc status = e_state_desc::UNSET;
@@ -102,9 +103,6 @@ struct tree_node
 	// store as int to keep statistical value when obstacle data is cleared
 	int occupancy = 0;
 	short int depth = 0;
-	short int cluster_id = -1;
-
-	search_node_ptr Astar_ref = nullptr;
 
 	tree_node_ptr parent = nullptr;
 	std::array<tree_node_ptr, 8> children;
@@ -117,11 +115,16 @@ struct tree_node
 	std::array<std::vector<point_3d>, 8> obstacles;
 
 	void connect_children();
-	bool is_neighbor_to(tree_node_ptr node) const;
+	const bool is_neighbor_to(const tree_node_ptr& node) const;
+
+	tree_node()
+	: id(0), coord(0,0,0), size(0)
+	{}
 
 	tree_node(
-		int _id, int _size, 
-		point_3d _coord,
+		int _id, 
+		point_3d _coord, 
+		int _size, 
 		tree_node_ptr _parent = nullptr
 	)
 	: coord(_coord), id(_id), size(_size), parent(_parent)
@@ -132,39 +135,41 @@ struct tree_node
 			children [i] = nullptr;
 		}
 	}
+
+	virtual ~tree_node() {}
 };
 
 /// Astar state of tree node in path search graph
-struct search_node
+class search_node : public tree_node
 {
-	int id;
-	point_3d coord;
-
-	/// reference to an octree node
-	tree_node_ptr octree_ref = nullptr;
+public:
 	/// weighed connections
-	std::map<search_node_ptr, double> neighbors;
-	std::set<int> neighbor_ids;
+	std::map<search_node_ptr, double> neighbors_weights;
 	/// list of paths to other nodes
 	std::map<search_node_ptr, std::vector<int>> paths;
 	/// node connections to neighboring cluster
 	std::vector<int> interedges_ids;
 
+	// some vars for HPA clustering
+	short int cluster_id = -1;
 	std::set<int> leads_to_clusters;
-	int cluster_id = -1;
 
 	Astar_priority_queue::handle_type heap_key;
-
-	bool opened = false;
-	bool closed = false;
-	double g = std::numeric_limits<double>::infinity();
-	double h = 0;
+	bool opened = false, closed = false;
+	double h = 0, g = std::numeric_limits<double>::infinity();
 
 	search_node_ptr prev_in_path = nullptr;
 
-	search_node(int _id, point_3d _coord)
-	: id(_id), coord(_coord)
-	{}
+	search_node(const tree_node& copy)
+	: tree_node(copy)
+	{	}
+	
+	search_node(int _id, point_3d _coord, int _size = 0, tree_node_ptr _par = nullptr)
+	: tree_node(_id, _coord, _size, _par)
+	{	}
+
+	~search_node() 
+	{  }
 };
 
 class octree_path_planner
@@ -183,8 +188,13 @@ public:
 	tree_node_ptr make_child_node(tree_node_ptr par, e_cluster_part _label, int _id);
 	tree_node_ptr make_corner_node(tree_node_ptr par, e_cluster_part _label, int _id, int corner_size);
 
-	search_node_ptr convert_to_graph_node(tree_node_ptr t);
+	search_node_ptr convert_to_search_node(tree_node_ptr t);
 
+	static inline search_node_ptr cast(const tree_node_ptr& ref) {
+		// derived is not polymorfic and all object must be initialized as derived, so static cast
+		return std::static_pointer_cast<search_node>(ref);
+	}
+	
 	int expand_iteration = 0;
 
 	/// this function conducts path planning on the map
@@ -207,7 +217,7 @@ public:
 private:
 	void set_node_status(tree_node_ptr node);
 	void external_search(tree_node_ptr node);
-	void mark_treebranch(int c_id, tree_node_ptr &c);
+	void mark_treebranch(int c_id, search_node_ptr &c);
 
 	/// HPA Functional
 	void set_cluster_insides(std::vector<search_node_ptr> &cluster_inside, tree_node_ptr &current);
@@ -246,7 +256,7 @@ private:
 	// octree data <-> search graph
 
 	tree_node_ptr m_root;
-	std::vector<tree_node_ptr> m_tree_nodes;
+	std::vector<search_node_ptr> m_tree_nodes;
 	std::map<int, search_node_ptr> m_search_nodes;
 
 	Astar_priority_queue m_search_front;
